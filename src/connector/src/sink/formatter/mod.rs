@@ -31,7 +31,7 @@ use super::encoder::template::TemplateEncoder;
 use super::encoder::{DateHandlingMode, KafkaConnectParams, TimestamptzHandlingMode};
 use super::redis::{KEY_FORMAT, VALUE_FORMAT};
 use crate::sink::encoder::{
-    AvroEncoder, AvroHeader, JsonEncoder, ProtoEncoder, TimestampHandlingMode,
+    AvroEncoder, AvroHeader, JsonEncoder, ProtoEncoder, ProtoHeader, TimestampHandlingMode,
 };
 
 /// Transforms a `StreamChunk` into a sequence of key-value pairs according a specific format,
@@ -123,7 +123,8 @@ impl SinkFormatterImpl {
                             crate::schema::protobuf::fetch_descriptor(&format_desc.options, None)
                                 .await
                                 .map_err(|e| SinkError::Config(anyhow!("{e:?}")))?;
-                        let val_encoder = ProtoEncoder::new(schema, None, descriptor)?;
+                        let val_encoder =
+                            ProtoEncoder::new(schema, None, descriptor, ProtoHeader::None)?;
                         let formatter = AppendOnlyFormatter::new(key_encoder, val_encoder);
                         Ok(SinkFormatterImpl::AppendOnlyProto(formatter))
                     }
