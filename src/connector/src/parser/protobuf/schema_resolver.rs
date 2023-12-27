@@ -61,7 +61,7 @@ const WELL_KNOWN_TYPES: &[(&str, &[u8])] = embed_wkts![
 
 // Pull protobuf schema and all it's deps from the confluent schema registry,
 // and compile then into one file descriptor
-pub(super) async fn compile_file_descriptor_from_schema_registry(
+pub async fn compile_file_descriptor_from_schema_registry(
     subject_name: &str,
     client: &Client,
 ) -> Result<Vec<u8>> {
