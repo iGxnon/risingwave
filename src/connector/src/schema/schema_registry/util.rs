@@ -153,8 +153,6 @@ pub struct Subject {
 /// (e.g., import "other.proto" in protobuf)
 #[derive(Debug, Deserialize)]
 pub struct SchemaReference {
-    /// The name of the reference.
-    pub name: String,
     /// The subject that the referenced schema belongs to
     pub subject: String,
     /// The version of the referenced schema
