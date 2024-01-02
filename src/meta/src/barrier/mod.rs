@@ -841,6 +841,7 @@ impl GlobalBarrierManager {
                     }
                     commands
                 };
+                tracing::trace!("finished_commands: {}", finished_commands.len());
 
                 for command in finished_commands {
                     self.checkpoint_control.stash_command_to_finish(command);

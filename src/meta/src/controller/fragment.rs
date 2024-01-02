@@ -39,8 +39,7 @@ use risingwave_pb::meta::{
 use risingwave_pb::source::PbConnectorSplits;
 use risingwave_pb::stream_plan::stream_node::NodeBody;
 use risingwave_pb::stream_plan::{
-    PbDispatchStrategy, PbFragmentTypeFlag, PbStreamActor, PbStreamContext, PbStreamNode,
-    StreamSource,
+    PbDispatchStrategy, PbFragmentTypeFlag, PbStreamActor, PbStreamContext,
 };
 use sea_orm::sea_query::{Expr, Value};
 use sea_orm::ActiveValue::Set;
@@ -1160,23 +1159,6 @@ impl CatalogController {
         Ok(chain_fragments)
     }
 
-    /// Find the external stream source info inside the stream node, if any.
-    fn find_stream_source(stream_node: &PbStreamNode) -> Option<&StreamSource> {
-        if let Some(NodeBody::Source(source)) = &stream_node.node_body {
-            if let Some(inner) = &source.source_inner {
-                return Some(inner);
-            }
-        }
-
-        for child in &stream_node.input {
-            if let Some(source) = Self::find_stream_source(child) {
-                return Some(source);
-            }
-        }
-
-        None
-    }
-
     pub async fn load_source_fragment_ids(
         &self,
     ) -> MetaResult<HashMap<SourceId, BTreeSet<FragmentId>>> {
@@ -1195,9 +1177,9 @@ impl CatalogController {
 
         let mut source_fragment_ids = HashMap::new();
         for (fragment_id, _, stream_node) in fragments {
-            if let Some(source) = Self::find_stream_source(stream_node.inner_ref()) {
+            if let Some(source_id) = stream_node.inner_ref().find_stream_source() {
                 source_fragment_ids
-                    .entry(source.source_id as SourceId)
+                    .entry(source_id as SourceId)
                     .or_insert_with(BTreeSet::new)
                     .insert(fragment_id);
             }
@@ -1205,31 +1187,33 @@ impl CatalogController {
         Ok(source_fragment_ids)
     }
 
-    pub async fn get_stream_source_fragment_ids(
+    pub async fn load_backfill_fragment_ids(
         &self,
-        job_id: ObjectId,
-    ) -> MetaResult<HashMap<SourceId, BTreeSet<FragmentId>>> {
+    ) -> MetaResult<HashMap<SourceId, BTreeSet<(FragmentId, FragmentId)>>> {
         let inner = self.inner.read().await;
-        let mut fragments: Vec<(FragmentId, i32, StreamNode)> = Fragment::find()
+        let mut fragments: Vec<(FragmentId, Vec<FragmentId>, i32, StreamNode)> = Fragment::find()
             .select_only()
             .columns([
                 fragment::Column::FragmentId,
+                fragment::Column::UpstreamFragmentId,
                 fragment::Column::FragmentTypeMask,
                 fragment::Column::StreamNode,
             ])
-            .filter(fragment::Column::JobId.eq(job_id))
             .into_tuple()
             .all(&inner.db)
             .await?;
-        fragments.retain(|(_, mask, _)| *mask & PbFragmentTypeFlag::Source as i32 != 0);
+        fragments.retain(|(_, _, mask, _)| *mask & PbFragmentTypeFlag::SourceBackfill as i32 != 0);
 
         let mut source_fragment_ids = HashMap::new();
-        for (fragment_id, _, stream_node) in fragments {
-            if let Some(source) = Self::find_stream_source(stream_node.inner_ref()) {
+        for (fragment_id, upstream_fragment_id, _, stream_node) in fragments {
+            if let Some(source_id) = stream_node.inner_ref().find_source_backfill() {
+                if upstream_fragment_id.len() != 1 {
+                    bail!("SourceBackfill should have only one upstream fragment, found {} for fragment {}", upstream_fragment_id.len(), fragment_id);
+                }
                 source_fragment_ids
-                    .entry(source.source_id as SourceId)
+                    .entry(source_id as SourceId)
                     .or_insert_with(BTreeSet::new)
-                    .insert(fragment_id);
+                    .insert((fragment_id, upstream_fragment_id[0]));
             }
         }
         Ok(source_fragment_ids)
