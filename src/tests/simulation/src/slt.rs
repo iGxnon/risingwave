@@ -271,10 +271,11 @@ pub async fn run_slt_task(
                         })
                         .await
                     {
-                        // cluster could be still under recovering if killed before, retry if
-                        // meets `no reader for dml in table with id {}`.
+                        // cluster could be still under recovering if killed before, retry if meets certain errors.
+                        let retryable_err =
+                            ["no reader for dml in table", "to collect actors not found"];
                         let should_retry =
-                            err.to_string().contains("no reader for dml in table") && i < 5;
+                            retryable_err.iter().any(|s| err.to_string().contains(s)) && i < 5;
                         if !should_retry {
                             panic!("{}", err);
                         }
