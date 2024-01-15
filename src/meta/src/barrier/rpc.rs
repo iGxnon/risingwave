@@ -162,9 +162,9 @@ impl GlobalBarrierManagerContext {
         });
 
         // join_all rather than try_join_all, in order to gather errors from all compute nodes.
-        tracing::debug("start injection barrier");
+        tracing::debug!("start injection barrier");
         let inject_results = join_all(inject_futures).await;
-        tracing::debug("finish injection barrier");
+        tracing::debug!("finish injection barrier");
         let mut errors = inject_results
             .into_iter()
             .zip_eq_debug(node_need_collect.iter().filter_map(|(id, v)| {
@@ -240,9 +240,9 @@ impl GlobalBarrierManagerContext {
         });
 
         // join_all rather than try_join_all, in order to gather errors from all compute nodes.
-        tracing::debug("start collect barrier");
+        tracing::debug!("start collect barrier");
         let collect_result = join_all(collect_futures).await;
-        tracing::debug("stop collect barrier");
+        tracing::debug!("stop collect barrier");
         let (successes, failures): (Vec<_>, Vec<_>) = collect_result
             .into_iter()
             .zip_eq_debug(node_need_collect.iter().filter_map(|(id, v)| {
