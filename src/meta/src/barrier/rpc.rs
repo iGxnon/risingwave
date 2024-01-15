@@ -221,6 +221,7 @@ impl GlobalBarrierManagerContext {
                 let request_id = Uuid::new_v4().to_string();
                 let tracing_context = tracing_context.clone();
                 async move {
+                    tracing::debug!(node_id, "request collect barrier");
                     let client = client_pool.get(node).await?;
                     let request = BarrierCompleteRequest {
                         request_id,
@@ -233,7 +234,9 @@ impl GlobalBarrierManagerContext {
                     );
 
                     // This RPC returns only if this worker node has collected this barrier.
-                    client.barrier_complete(request).await
+                    let ret = client.barrier_complete(request).await;
+                    tracing::debug!(node_id, "receive collect barrier");
+                    ret
                 }
                 .into()
             }
