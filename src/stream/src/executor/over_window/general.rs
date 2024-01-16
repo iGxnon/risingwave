@@ -380,9 +380,8 @@ impl<S: StateStore> OverWindowExecutor<S> {
                                 }
                             }
                             (existed, new_record) => panic!(
-                                "other cases should not exist, existed: {}, new record: {}",
-                                existed.to_record_type(),
-                                new_record.to_record_type()
+                                "other cases should not exist, existed: {:?}, new record: {:?}",
+                                existed, new_record
                             ),
                         }
                     } else {
