@@ -379,7 +379,11 @@ impl<S: StateStore> OverWindowExecutor<S> {
                                     yield chunk;
                                 }
                             }
-                            _ => panic!("other cases should not exist"),
+                            (existed, new_record) => panic!(
+                                "other cases should not exist, existed: {}, new record: {}",
+                                existed.to_record_type(),
+                                new_record.to_record_type()
+                            ),
                         }
                     } else {
                         key_change_update_buffer.insert(pk, record);
@@ -389,6 +393,10 @@ impl<S: StateStore> OverWindowExecutor<S> {
                 // Apply the change record.
                 partition.write_record(&mut this.state_table, key, record);
             }
+            assert!(
+                key_change_update_buffer.is_empty(),
+                "split deletes and inserts should be paired"
+            );
 
             let cache_len = partition.cache_real_len();
             let stats = partition.summarize();

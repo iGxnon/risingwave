@@ -13,6 +13,7 @@
 // limitations under the License.
 
 use auto_enums::auto_enum;
+use parse_display::Display;
 
 use super::StreamChunk;
 use crate::array::Op;
@@ -20,7 +21,7 @@ use crate::row::Row;
 use crate::types::DataType;
 
 /// Type of a row change, without row data.
-#[derive(Debug, Copy, Clone)]
+#[derive(Debug, Copy, Clone, Display)]
 pub enum RecordType {
     Insert,
     Delete,
