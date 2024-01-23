@@ -122,7 +122,9 @@ def check_spark_table(case_name):
 
 
 if __name__ == "__main__":
-    case_name = "rest"
+#     case_name = "rest"
+#     case_name = "storage"
+    case_name = "jdbc"
     config = configparser.ConfigParser()
     config.read(f"{case_dir(case_name)}/config.ini")
     print({section: dict(config[section]) for section in config.sections()})

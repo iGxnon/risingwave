@@ -63,8 +63,7 @@ pub const ICEBERG_SINK: &str = "iceberg";
 
 static RW_CATALOG_NAME: &str = "risingwave";
 
-#[derive(Debug, Clone, Deserialize, WithOptions)]
-#[serde(deny_unknown_fields)]
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, WithOptions)]
 pub struct IcebergConfig {
     pub connector: String, // Avoid deny unknown field. Must be "iceberg"
 
@@ -380,12 +379,12 @@ impl IcebergSink {
                     .map_err(|e| SinkError::Iceberg(anyhow!(e)))?;
                 Ok(catalog)
             }
-            catalog_type if catalog_type == "hive" || catalog_type == "sql" || catalog_type == "glue" || catalog_type == "dynamodb" => {
+            catalog_type if catalog_type == "hive" || catalog_type == "jdbc" || catalog_type == "glue" || catalog_type == "dynamodb" => {
                 // Create java catalog
                 let (base_catalog_config, java_catalog_props) = self.config.build_jni_catalog_configs()?;
                 let catalog_impl = match catalog_type {
                     "hive" => "org.apache.iceberg.hive.HiveCatalog",
-                    "sql" => "org.apache.iceberg.jdbc.JdbcCatalog",
+                    "jdbc" => "org.apache.iceberg.jdbc.JdbcCatalog",
                     "glue" => "org.apache.iceberg.aws.glue.GlueCatalog",
                     "dynamodb" => "org.apache.iceberg.aws.dynamodb.DynamoDbCatalog",
                     _ => unreachable!(),
@@ -890,6 +889,7 @@ fn try_matches_arrow_schema(rw_schema: &Schema, arrow_schema: &ArrowSchema) -> R
 mod test {
     use risingwave_common::catalog::Field;
 
+    use crate::sink::iceberg::IcebergConfig;
     use crate::source::DataType;
 
     #[test]
@@ -923,5 +923,52 @@ mod test {
             ArrowField::new("c", ArrowDataType::Int32, false),
         ]);
         try_matches_arrow_schema(&risingwave_schema, &arrow_schema).unwrap();
+    }
+
+    #[test]
+    fn test_parse_iceberg_config() {
+        let values = [
+            ("connector", "iceberg"),
+            ("type", "upsert"),
+            ("primary_key", "v1"),
+            ("warehouse.path", "s3://iceberg"),
+            ("s3.endpoint", "http://127.0.0.1:9301"),
+            ("s3.access.key", "hummockadmin"),
+            ("s3.secret.key", "hummockadmin"),
+            ("s3.region", "us-east-1"),
+            ("catalog.type", "jdbc"),
+            ("catalog.uri", "jdbc://postgresql://postgres:5432/iceberg"),
+            ("catalog.jdbc.user", "admin"),
+            ("catalog.jdbc.password", "123456"),
+            ("database.name", "demo_db"),
+            ("table.name", "demo_table"),
+        ]
+        .into_iter()
+        .map(|(k, v)| (k.to_string(), v.to_string()))
+        .collect();
+
+        let iceberg_config = IcebergConfig::from_hashmap(values).unwrap();
+
+        let expected_iceberg_config = IcebergConfig {
+            connector: "iceberg".to_string(),
+            r#type: "upsert".to_string(),
+            force_append_only: false,
+            table_name: "demo_table".to_string(),
+            database_name: "demo_db".to_string(),
+            catalog_type: Some("jdbc".to_string()),
+            path: "s3://iceberg".to_string(),
+            uri: Some("jdbc://postgresql://postgres:5432/iceberg".to_string()),
+            region: Some("us-east-1".to_string()),
+            endpoint: Some("http://127.0.0.1:9301".to_string()),
+            access_key: "hummockadmin".to_string(),
+            secret_key: "hummockadmin".to_string(),
+            primary_key: Some(vec!["v1".to_string()]),
+            java_catalog_props: [("jdbc.user", "admin"), ("jdbc.password", "123456")]
+                .into_iter()
+                .map(|(k, v)| (k.to_string(), v.to_string()))
+                .collect(),
+        };
+
+        assert_eq!(iceberg_config, expected_iceberg_config);
     }
 }
