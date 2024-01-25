@@ -27,8 +27,7 @@ use cfg_or_panic::cfg_or_panic;
 use moka::future::Cache;
 use risingwave_common::array::{ArrayError, ArrayRef, DataChunk};
 use risingwave_common::config::ObjectStoreConfig;
-use risingwave_common::row::OwnedRow;
-use risingwave_common::types::{DataType, Datum};
+use risingwave_common::types::DataType;
 use risingwave_object_store::object::build_remote_object_store;
 use risingwave_object_store::object::object_metrics::ObjectStoreMetrics;
 use risingwave_pb::expr::ExprNode;
@@ -42,7 +41,6 @@ use crate::{bail, Result};
 #[derive(Debug)]
 pub struct UserDefinedFunction {
     children: Vec<BoxedExpression>,
-    arg_types: Vec<DataType>,
     return_type: DataType,
     arg_schema: Arc<Schema>,
     imp: UdfImpl,
@@ -80,20 +78,6 @@ impl Expression for UserDefinedFunction {
             columns.push(array);
         }
         self.eval_inner(columns, vis).await
-    }
-
-    #[cfg_or_panic(not(madsim))]
-    async fn eval_row(&self, input: &OwnedRow) -> Result<Datum> {
-        let mut columns = Vec::with_capacity(self.children.len());
-        for child in &self.children {
-            let datum = child.eval_row(input).await?;
-            columns.push(datum);
-        }
-        let arg_row = OwnedRow::new(columns);
-        let chunk = DataChunk::from_rows(std::slice::from_ref(&arg_row), &self.arg_types);
-        let arg_columns = chunk.columns().to_vec();
-        let output_array = self.eval_inner(arg_columns, chunk.visibility()).await?;
-        Ok(output_array.to_datum())
     }
 }
 
@@ -241,7 +225,6 @@ impl Build for UserDefinedFunction {
 
         Ok(Self {
             children: udf.children.iter().map(build_child).try_collect()?,
-            arg_types: udf.arg_types.iter().map(|t| t.into()).collect(),
             return_type,
             arg_schema,
             imp,
