@@ -85,7 +85,7 @@
         <flink.version>1.18.0</flink.version>
         <testcontainers.version>1.17.6</testcontainers.version>
         <sqlite.version>3.45.0.0</sqlite.version>
-        <aws.version>2.22.13</aws.version>
+        <aws.version>2.21.42</aws.version>
     </properties>
 
     <dependencyManagement>
@@ -339,6 +339,11 @@
             <dependency>
                 <groupId>software.amazon.awssdk</groupId>
                 <artifactId>sts</artifactId>
+                <version>${aws.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>software.amazon.awssdk</groupId>
+                <artifactId>apache-client</artifactId>
                 <version>${aws.version}</version>
             </dependency>
             <dependency>

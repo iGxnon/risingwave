@@ -874,13 +874,13 @@ description = "🌟 Run unit tests"
 [tasks.build-connector-node]
 category = "RiseDev - Build"
 dependencies = ["prepare"]
-condition = { env_set = [
-  "ENABLE_BUILD_RW_CONNECTOR",
-], files_modified = { input = [
-  "./java/connector-node/**/*",
-], output = [
-  "./java/connector-node/assembly/target/**/*",
-] } }
+#condition = { env_set = [
+#  "ENABLE_BUILD_RW_CONNECTOR",
+#], files_modified = { input = [
+#  "./java/connector-node/**/*",
+#], output = [
+#  "./java/connector-node/assembly/target/**/*",
+#] } }
 description = "Build RisingWave Connector from source"
 script = '''
 #!/usr/bin/env bash

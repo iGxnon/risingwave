@@ -189,25 +189,34 @@ impl JniCatalog {
 #[cfg(test)]
 mod tests {
     use icelake::catalog::BaseCatalogConfig;
+    use icelake::TableIdentifier;
 
     use crate::sink::iceberg::jni_catalog::JniCatalog;
 
-    #[test]
-    fn test_create_jni_catalog_wrapper() {
+    #[tokio::test]
+    async fn test_create_jni_catalog_wrapper() {
         let config = BaseCatalogConfig {
-            name: "test".to_string(),
+            name: "demo".to_string(),
             ..Default::default()
         };
 
         let props = [
-            ("uri", "jdbc:sqlite::memory:"),
-            ("warehouse", "s3://icebergdata/test"),
+            ("uri", "jdbc:postgresql://172.17.0.3:5432/iceberg"),
+            ("jdbc.user", "admin"),
+            ("jdbc.password", "123456"),
+            ("warehouse", "s3://icebergdata/demo"),
             ("io-impl", "org.apache.iceberg.aws.s3.S3FileIO"),
+            ("s3.endpoint", "http://172.17.0.2:9301"),
+            ("s3.path-style-access", "true"),
+            ("s3.access-key-id", "hummockadmin"),
+            ("s3.secret-access-key", "hummockadmin")
         ]
         .into_iter()
         .map(|(k, v)| (k.to_string(), v.to_string()))
         .collect();
 
-        JniCatalog::build(config, "test", "org.apache.iceberg.jdbc.JdbcCatalog", props).unwrap();
+        let catalog = JniCatalog::build(config, "demo", "org.apache.iceberg.jdbc.JdbcCatalog", props).unwrap();
+
+        let table = catalog.load_table(&TableIdentifier::new(vec!["s1", "t1"]).unwrap()).await.unwrap();
     }
 }
