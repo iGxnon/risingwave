@@ -1,7 +1,7 @@
 ---
 version: "3"
 x-image: &image
-  image: ${RW_IMAGE:-ghcr.io/risingwavelabs/risingwave:git-2bcf60ce986c8b5ea08c93bca1361820a3f16b1f}
+  image: ${RW_IMAGE:-ghcr.io/risingwavelabs/risingwave:git-f19b518fd51a91ace5b1e2f5bb02de5b04258e15}
 services:
   risingwave-standalone:
     <<: *image

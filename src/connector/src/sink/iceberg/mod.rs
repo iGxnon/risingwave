@@ -61,8 +61,6 @@ use crate::sink::{Result, SinkCommitCoordinator, SinkParam};
 /// This iceberg sink is WIP. When it ready, we will change this name to "iceberg".
 pub const ICEBERG_SINK: &str = "iceberg";
 
-static RW_CATALOG_NAME: &str = "risingwave";
-
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, WithOptions)]
 pub struct IcebergConfig {
     pub connector: String, // Avoid deny unknown field. Must be "iceberg"
@@ -76,7 +74,10 @@ pub struct IcebergConfig {
     pub table_name: String, // Full name of table, must include schema name
 
     #[serde(rename = "database.name")]
-    pub database_name: String, // Database name of table
+    pub database_name: Option<String>, // Database name of table
+
+    #[serde(rename = "catalog.name")]
+    pub catalog_name: String, // Catalog name.
 
     // Catalog type supported by iceberg, such as "storage", "rest".
     // If not set, we use "storage" as default.
@@ -160,11 +161,14 @@ impl IcebergConfig {
             }
         }
 
-        // All configs starts with "catalog." will be treated as java configs.
+        // All configs start with "catalog." will be treated as java configs.
         config.java_catalog_props = values
             .iter()
             .filter(|(k, _v)| {
-                k.starts_with("catalog.") && k != &"catalog.uri" && k != &"catalog.type"
+                k.starts_with("catalog.")
+                    && k != &"catalog.uri"
+                    && k != &"catalog.type"
+                    && k != &"catalog.name"
             })
             .map(|(k, v)| (k[8..].to_string(), v.to_string()))
             .collect();
@@ -176,18 +180,26 @@ impl IcebergConfig {
         self.catalog_type.as_deref().unwrap_or("storage")
     }
 
+    fn full_table_name(&self) -> String {
+        if let Some(database_name) = &self.database_name {
+            format!("{}.{}", database_name, self.table_name)
+        } else {
+            self.table_name.clone()
+        }
+    }
+
     fn build_iceberg_configs(&self) -> Result<HashMap<String, String>> {
         let mut iceberg_configs = HashMap::new();
 
         let catalog_type = self.catalog_type().to_string();
 
         iceberg_configs.insert(CATALOG_TYPE.to_string(), catalog_type.clone());
-        iceberg_configs.insert(CATALOG_NAME.to_string(), RW_CATALOG_NAME.to_string());
+        iceberg_configs.insert(CATALOG_NAME.to_string(), self.catalog_name.clone());
 
         match catalog_type.as_str() {
             "storage" => {
                 iceberg_configs.insert(
-                    format!("iceberg.catalog.{}.warehouse", RW_CATALOG_NAME),
+                    format!("iceberg.catalog.{}.warehouse", self.catalog_name.clone()),
                     self.path.clone(),
                 );
             }
@@ -195,7 +207,10 @@ impl IcebergConfig {
                 let uri = self.uri.clone().ok_or_else(|| {
                     SinkError::Iceberg(anyhow!("`catalog.uri` must be set in rest catalog"))
                 })?;
-                iceberg_configs.insert(format!("iceberg.catalog.{}.uri", RW_CATALOG_NAME), uri);
+                iceberg_configs.insert(
+                    format!("iceberg.catalog.{}.uri", self.catalog_name.clone()),
+                    uri,
+                );
             }
             _ => {
                 return Err(SinkError::Iceberg(anyhow!(
@@ -259,7 +274,7 @@ impl IcebergConfig {
             let catalog_type = self.catalog_type().to_string();
 
             iceberg_configs.insert(CATALOG_TYPE.to_string(), catalog_type.clone());
-            iceberg_configs.insert(CATALOG_NAME.to_string(), "risingwave".to_string());
+            iceberg_configs.insert(CATALOG_NAME.to_string(), self.catalog_name.clone());
 
             if let Some(region) = &self.region {
                 iceberg_configs.insert(
@@ -390,7 +405,8 @@ impl IcebergSink {
                     _ => unreachable!(),
                 };
 
-                jni_catalog::JniCatalog::build(base_catalog_config, "risingwave", catalog_impl, java_catalog_props)
+                jni_catalog::JniCatalog::build(base_catalog_config, &self.config.catalog_name, catalog_impl,
+                                               java_catalog_props)
             }
             _ => {
                 Err(SinkError::Iceberg(anyhow!(
@@ -407,12 +423,8 @@ impl IcebergSink {
             .await
             .map_err(|e| SinkError::Iceberg(anyhow!("Unable to load iceberg catalog: {e}")))?;
 
-        let table_id = TableIdentifier::new(
-            vec![self.config.database_name.as_str()]
-                .into_iter()
-                .chain(self.config.table_name.split('.')),
-        )
-        .map_err(|e| SinkError::Iceberg(anyhow!("Unable to parse table name: {e}")))?;
+        let table_id = TableIdentifier::new(vec![self.config.full_table_name()])
+            .map_err(|e| SinkError::Iceberg(anyhow!("Unable to parse table name: {e}")))?;
 
         let table = catalog
             .load_table(&table_id)
@@ -937,6 +949,7 @@ mod test {
             ("s3.secret.key", "hummockadmin"),
             ("s3.region", "us-east-1"),
             ("catalog.type", "jdbc"),
+            ("catalog.name", "demo"),
             ("catalog.uri", "jdbc://postgresql://postgres:5432/iceberg"),
             ("catalog.jdbc.user", "admin"),
             ("catalog.jdbc.password", "123456"),
@@ -954,7 +967,8 @@ mod test {
             r#type: "upsert".to_string(),
             force_append_only: false,
             table_name: "demo_table".to_string(),
-            database_name: "demo_db".to_string(),
+            database_name: Some("demo_db".to_string()),
+            catalog_name: "demo".to_string(),
             catalog_type: Some("jdbc".to_string()),
             path: "s3://iceberg".to_string(),
             uri: Some("jdbc://postgresql://postgres:5432/iceberg".to_string()),
@@ -970,5 +984,7 @@ mod test {
         };
 
         assert_eq!(iceberg_config, expected_iceberg_config);
+
+        assert_eq!(iceberg_config.full_table_name(), "demo_db.demo_table");
     }
 }
