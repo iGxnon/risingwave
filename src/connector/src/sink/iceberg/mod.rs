@@ -180,12 +180,14 @@ impl IcebergConfig {
         self.catalog_type.as_deref().unwrap_or("storage")
     }
 
-    fn full_table_name(&self) -> String {
-        if let Some(database_name) = &self.database_name {
-            format!("{}.{}", database_name, self.table_name)
+    fn full_table_name(&self) -> Result<TableIdentifier> {
+        let ret = if let Some(database_name) = &self.database_name {
+            TableIdentifier::new(vec![database_name, &self.table_name])
         } else {
-            self.table_name.clone()
-        }
+            TableIdentifier::new(vec![&self.table_name])
+        };
+
+        ret.map_err(|e| SinkError::Iceberg(anyhow!("Failed to create table identifier: {}", e)))
     }
 
     fn build_iceberg_configs(&self) -> Result<HashMap<String, String>> {
@@ -423,8 +425,7 @@ impl IcebergSink {
             .await
             .map_err(|e| SinkError::Iceberg(anyhow!("Unable to load iceberg catalog: {e}")))?;
 
-        let table_id = TableIdentifier::new(vec![self.config.full_table_name()])
-            .map_err(|e| SinkError::Iceberg(anyhow!("Unable to parse table name: {e}")))?;
+        let table_id = self.config.full_table_name()?;
 
         let table = catalog
             .load_table(&table_id)
@@ -985,6 +986,9 @@ mod test {
 
         assert_eq!(iceberg_config, expected_iceberg_config);
 
-        assert_eq!(iceberg_config.full_table_name(), "demo_db.demo_table");
+        assert_eq!(
+            &iceberg_config.full_table_name().unwrap().to_string(),
+            "demo_db.demo_table"
+        );
     }
 }
