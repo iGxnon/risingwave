@@ -231,6 +231,19 @@ impl MetadataManager {
         }
     }
 
+    // pub async fn get_fragments_by_ids(
+    //     &self,
+    //     fragment_ids: impl Iterator<Item = FragmentId>,
+    // ) -> MetaResult<impl Iterator<Item = >> {
+    //     // let MetadataManager::V2(mgr) = self else {
+    //     //     bail!("only v2");
+    //     // };
+    //     //
+    //     // mgr.catalog_controller.get_job_fragments_by_id()
+    //
+    //     todo!()
+    // }
+
     pub async fn get_streaming_cluster_info(&self) -> MetaResult<StreamingClusterInfo> {
         match self {
             MetadataManager::V1(mgr) => Ok(mgr.cluster_manager.get_streaming_cluster_info().await),

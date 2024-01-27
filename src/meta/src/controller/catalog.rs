@@ -20,14 +20,16 @@ use anyhow::anyhow;
 use itertools::Itertools;
 use risingwave_common::catalog::{TableOption, DEFAULT_SCHEMA_NAME, SYSTEM_SCHEMAS};
 use risingwave_common::{bail, current_cluster_version};
+use risingwave_meta_model_migration::Condition;
 use risingwave_meta_model_v2::object::ObjectType;
 use risingwave_meta_model_v2::prelude::*;
 use risingwave_meta_model_v2::table::TableType;
 use risingwave_meta_model_v2::{
-    connection, database, function, index, object, object_dependency, schema, sink, source,
-    streaming_job, table, user_privilege, view, ActorId, ColumnCatalogArray, ConnectionId,
-    CreateType, DatabaseId, FragmentId, FunctionId, IndexId, JobStatus, ObjectId,
-    PrivateLinkService, Property, SchemaId, SourceId, StreamSourceInfo, TableId, UserId,
+    actor, actor_dispatcher, connection, database, fragment, function, index, object,
+    object_dependency, schema, sink, source, streaming_job, table, user_privilege, view, ActorId,
+    ColumnCatalogArray, ConnectionId, CreateType, DatabaseId, FragmentId, FunctionId, IndexId,
+    JobStatus, ObjectId, PrivateLinkService, Property, SchemaId, SourceId, StreamSourceInfo,
+    TableId, UserId,
 };
 use risingwave_pb::catalog::table::PbTableType;
 use risingwave_pb::catalog::{
@@ -44,8 +46,8 @@ use risingwave_pb::user::PbUserInfo;
 use sea_orm::sea_query::{Expr, SimpleExpr};
 use sea_orm::ActiveValue::Set;
 use sea_orm::{
-    ActiveModelTrait, ColumnTrait, DatabaseConnection, DatabaseTransaction, EntityTrait,
-    IntoActiveModel, JoinType, PaginatorTrait, QueryFilter, QuerySelect, RelationTrait,
+    ActiveModelTrait, ColumnTrait, DatabaseConnection, DatabaseTransaction, DbBackend, EntityTrait,
+    IntoActiveModel, JoinType, PaginatorTrait, QueryFilter, QuerySelect, QueryTrait, RelationTrait,
     TransactionTrait, Value,
 };
 use tokio::sync::{RwLock, RwLockReadGuard};
@@ -197,6 +199,137 @@ impl CatalogController {
         }
 
         Ok(version)
+    }
+
+    pub async fn test(&self, fragment_ids: Vec<FragmentId>) -> MetaResult<()> {
+        let inner = self.inner.read().await;
+        let txn = inner.db.begin().await?;
+
+        let x = Fragment::find().filter(fragment::Column::FragmentId.is_in(fragment_ids.clone()));
+
+        println!("find fragment {}", x.build(DbBackend::Postgres).to_string());
+        let fragments: Vec<_> = x.all(&txn).await?;
+
+        let fragment_map: HashMap<_, _> = fragments
+            .into_iter()
+            .map(|fragment| (fragment.fragment_id, fragment))
+            .collect();
+
+        println!("frag {:#?}", fragment_map);
+
+        let all_upstream_fragments: HashSet<_> = fragment_map
+            .values()
+            .flat_map(|fragment| fragment.upstream_fragment_id.inner_ref().clone())
+            //            .filter(|id| !fragment_map.contains_key(id))
+            .collect();
+
+        println!("all ups {:?}", all_upstream_fragments);
+
+        let x = Fragment::find().filter(fragment::Column::FragmentId.is_in(all_upstream_fragments));
+
+        println!(
+            "find upstreaming {}",
+            x.build(DbBackend::Postgres).to_string()
+        );
+        let upstream_fragments = x.all(&txn).await?;
+
+        let x = Fragment::find()
+            .join(
+                JoinType::InnerJoin,
+                fragment::Relation::ActorDispatcher.def(),
+            )
+            .join(JoinType::InnerJoin, actor_dispatcher::Relation::Actor.def())
+            .filter(actor::Column::FragmentId.is_in(fragment_ids.clone()));
+
+        println!(
+            "find downstream {}",
+            x.build(DbBackend::Postgres).to_string()
+        );
+        let fragments: Vec<fragment::Model> = x.all(&txn).await?;
+
+        // let downstream_fragments: Vec<_> = Fragment::find()
+        //     .filter(
+        //         Condition::any().add(jsonb_contains(your_id)),
+        //     )
+        //     .all(&db)
+        //     .await?;
+
+        // for fragment in fragments {
+        //
+        // }
+
+        // let recursive_query = Select::new()
+        //     .column(Expr::tbl(Fragment, "*"))
+        //     .from(SeaRc::new(Fragment))
+        //     .and_where(Expr::col(Fragment::Column::FragmentId).eq(root_fragment_id))
+        //     .into_subquery()
+        //     .to_owned();
+        //
+        // // 上游 Fragments
+        // let upstream_recursive_join = Select::new()
+        //     .column(Expr::tbl(Fragment, "*"))
+        //     .from(SeaRc::new(Fragment))
+        //     .and_where(
+        //         Expr::col(Fragment::Column::FragmentId).is_in(
+        //             Select::new()
+        //                 .expr(Func::json_array_elements_text(
+        //                     Select::new()
+        //                         .column(Fragment::Column::UpstreamFragmentId)
+        //                         .from(SeaRc::new(Fragment))
+        //                         .and_where(
+        //                             Expr::col(Fragment::Column::FragmentId).eq(root_fragment_id),
+        //                         )
+        //                         .into_subquery()
+        //                         .as_table_alias("upstream_fragments"),
+        //                 ))
+        //                 .into_subquery(),
+        //         ),
+        //     )
+        //     .into_subquery();
+        //
+        // // 下游 Fragments
+        // let downstream_recursive_join = Select::new()
+        //     .column(Expr::tbl(Fragment, "*"))
+        //     .from(SeaRc::new(Fragment))
+        //     .join_as(
+        //         JoinType::InnerJoin,
+        //         Select::new()
+        //             .expr(Func::json_array_elements_text(Expr::col(
+        //                 Fragment::Column::UpstreamFragmentId,
+        //             )))
+        //             .from(SeaRc::new(Fragment))
+        //             .to_owned()
+        //             .into_subquery()
+        //             .as_table_alias("downstream_fragments"),
+        //         Expr::col(Fragment::Column::FragmentId),
+        //         Expr::value(root_fragment_id),
+        //     )
+        //     .into_subquery();
+        //
+        // let recursive = Union::new()
+        //     .query(recursive_query)
+        //     .all()
+        //     .query(upstream_recursive_join)
+        //     .all()
+        //     .query(downstream_recursive_join)
+        //     .all()
+        //     .as_table()
+        //     .to_owned();
+        //
+        // let query = Select::new()
+        //     .from(SeaRc::new(Fragment))
+        //     .distinct_on(Fragment::Column::FragmentId)
+        //     .join(
+        //         JoinType::InnerJoin,
+        //         recursive,
+        //         Expr::col(SeaRc::new(Fragment), Fragment::Column::FragmentId),
+        //         Expr::col(recursive.as_table_alias(), Fragment::Column::FragmentId),
+        //     )
+        //     .to_owned();
+        //
+        // let model: Vec<Model> = query.into_model::<Model>().fetch_all(db).await?;
+
+        todo!()
     }
 
     pub async fn drop_database(
@@ -2570,6 +2703,14 @@ mod tests {
             .one(&mgr.inner.read().await.db)
             .await?
             .is_none());
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_scale() -> MetaResult<()> {
+        let mgr = CatalogController::new(MetaSrvEnv::for_test().await)?;
+        mgr.test(vec![1, 8]).await.unwrap();
 
         Ok(())
     }
