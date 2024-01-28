@@ -46,6 +46,9 @@
                 <include>*:risingwave-sink-mock-flink-http-sink</include>
 
             </includes>
+            <excludes>
+                <exclude>org.apache.iceberg:iceberg-common</exclude>
+            </excludes>
             <useTransitiveDependencies>true</useTransitiveDependencies>
             <useTransitiveFiltering>true</useTransitiveFiltering>
         </dependencySet>

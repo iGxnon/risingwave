@@ -201,12 +201,10 @@ mod tests {
         };
 
         let props = [
-            ("uri", "jdbc:postgresql://172.17.0.3:5432/iceberg"),
-            ("jdbc.user", "admin"),
-            ("jdbc.password", "123456"),
+            ("uri", "thrift://192.168.166.6:9083"),
             ("warehouse", "s3://icebergdata/demo"),
             ("io-impl", "org.apache.iceberg.aws.s3.S3FileIO"),
-            ("s3.endpoint", "http://172.17.0.2:9301"),
+            ("s3.endpoint", "http://192.168.166.3:9301"),
             ("s3.path-style-access", "true"),
             ("s3.access-key-id", "hummockadmin"),
             ("s3.secret-access-key", "hummockadmin")
@@ -215,8 +213,10 @@ mod tests {
         .map(|(k, v)| (k.to_string(), v.to_string()))
         .collect();
 
-        let catalog = JniCatalog::build(config, "demo", "org.apache.iceberg.jdbc.JdbcCatalog", props).unwrap();
+        let catalog = JniCatalog::build(config, "demo", "org.apache.iceberg.hive.HiveCatalog", props).unwrap();
 
         let table = catalog.load_table(&TableIdentifier::new(vec!["s1", "t1"]).unwrap()).await.unwrap();
+
+        println!("{:?}", table.table_name())
     }
 }
