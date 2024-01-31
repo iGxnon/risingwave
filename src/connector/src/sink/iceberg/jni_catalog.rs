@@ -207,15 +207,20 @@ mod tests {
             ("s3.endpoint", "http://192.168.166.3:9301"),
             ("s3.path-style-access", "true"),
             ("s3.access-key-id", "hummockadmin"),
-            ("s3.secret-access-key", "hummockadmin")
+            ("s3.secret-access-key", "hummockadmin"),
         ]
         .into_iter()
         .map(|(k, v)| (k.to_string(), v.to_string()))
         .collect();
 
-        let catalog = JniCatalog::build(config, "demo", "org.apache.iceberg.hive.HiveCatalog", props).unwrap();
+        let catalog =
+            JniCatalog::build(config, "demo", "org.apache.iceberg.hive.HiveCatalog", props)
+                .unwrap();
 
-        let table = catalog.load_table(&TableIdentifier::new(vec!["s1", "t1"]).unwrap()).await.unwrap();
+        let table = catalog
+            .load_table(&TableIdentifier::new(vec!["s1", "t1"]).unwrap())
+            .await
+            .unwrap();
 
         println!("{:?}", table.table_name())
     }
