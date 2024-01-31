@@ -22,6 +22,7 @@ use std::sync::Arc;
 
 use anyhow::anyhow;
 use async_recursion::async_recursion;
+use futures::stream::BoxStream;
 use futures::FutureExt;
 use itertools::Itertools;
 use parking_lot::Mutex;
@@ -33,14 +34,19 @@ use risingwave_pb::common::ActorInfo;
 use risingwave_pb::stream_plan;
 use risingwave_pb::stream_plan::stream_node::NodeBody;
 use risingwave_pb::stream_plan::{StreamActor, StreamNode};
+use risingwave_pb::stream_service::{
+    StreamingControlStreamRequest, StreamingControlStreamResponse,
+};
 use risingwave_storage::monitor::HummockTraceFutureExt;
 use risingwave_storage::{dispatch_state_store, StateStore};
 use rw_futures_util::AttachedFuture;
 use thiserror_ext::AsReport;
+use tokio::sync::mpsc::UnboundedSender;
 use tokio::sync::oneshot;
 use tokio::task::JoinHandle;
+use tonic::Status;
 
-use super::{unique_executor_id, unique_operator_id, BarrierCompleteResult};
+use super::{unique_executor_id, unique_operator_id};
 use crate::error::StreamResult;
 use crate::executor::monitor::StreamingMetrics;
 use crate::executor::subtask::SubtaskHandle;
@@ -195,25 +201,16 @@ impl LocalStreamManager {
         }
     }
 
-    /// Broadcast a barrier to all senders. Save a receiver in barrier manager
-    pub async fn send_barrier(
+    pub fn handle_new_control_stream(
         &self,
-        barrier: Barrier,
-        actor_ids_to_send: impl IntoIterator<Item = ActorId>,
-        actor_ids_to_collect: impl IntoIterator<Item = ActorId>,
-    ) -> StreamResult<()> {
+        sender: UnboundedSender<Result<StreamingControlStreamResponse, Status>>,
+        request_stream: BoxStream<'static, Result<StreamingControlStreamRequest, Status>>,
+    ) {
         self.local_barrier_manager
-            .send_barrier(barrier, actor_ids_to_send, actor_ids_to_collect)
-            .await?;
-        Ok(())
-    }
-
-    /// Use `epoch` to find collect rx. And wait for all actor to be collected before
-    /// returning.
-    pub async fn collect_barrier(&self, epoch: u64) -> StreamResult<BarrierCompleteResult> {
-        self.local_barrier_manager
-            .await_epoch_completed(epoch)
-            .await
+            .send_event(LocalBarrierEvent::NewControlStream {
+                sender,
+                request_stream,
+            })
     }
 
     pub fn context(&self) -> &Arc<SharedContext> {
@@ -228,14 +225,6 @@ impl LocalStreamManager {
                 result_sender,
             })
             .await
-    }
-
-    /// Force stop all actors on this worker, and then drop their resources.
-    pub async fn reset(&self) {
-        self.local_barrier_manager
-            .send_and_await(LocalBarrierEvent::Reset)
-            .await
-            .expect("should receive reset")
     }
 
     pub async fn update_actors(&self, actors: Vec<stream_plan::StreamActor>) -> StreamResult<()> {

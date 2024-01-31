@@ -103,15 +103,31 @@ message WaitEpochCommitResponse {
   common.Status status = 1;
 }
 
+message StreamingControlStreamRequest {
+  message InitRequest {}
+
+  oneof request {
+    InitRequest init = 1;
+    InjectBarrierRequest inject_barrier = 2;
+  }
+}
+
+message StreamingControlStreamResponse {
+  message InitResponse {}
+
+  oneof response {
+    InitResponse init = 1;
+    BarrierCompleteResponse complete_barrier = 2;
+  }
+}
+
 service StreamService {
   rpc UpdateActors(UpdateActorsRequest) returns (UpdateActorsResponse);
   rpc BuildActors(BuildActorsRequest) returns (BuildActorsResponse);
   rpc BroadcastActorInfoTable(BroadcastActorInfoTableRequest) returns (BroadcastActorInfoTableResponse);
   rpc DropActors(DropActorsRequest) returns (DropActorsResponse);
-  rpc ForceStopActors(ForceStopActorsRequest) returns (ForceStopActorsResponse);
-  rpc InjectBarrier(InjectBarrierRequest) returns (InjectBarrierResponse);
-  rpc BarrierComplete(BarrierCompleteRequest) returns (BarrierCompleteResponse);
   rpc WaitEpochCommit(WaitEpochCommitRequest) returns (WaitEpochCommitResponse);
+  rpc StreamingControlStream(stream StreamingControlStreamRequest) returns (stream StreamingControlStreamResponse);
 }
 
 // TODO: Lifecycle management for actors.

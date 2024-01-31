@@ -812,6 +812,8 @@ mod tests {
     use std::sync::{Arc, Mutex};
     use std::time::Duration;
 
+    use futures::stream::BoxStream;
+    use futures::Stream;
     use risingwave_common::catalog::TableId;
     use risingwave_common::hash::ParallelUnitMapping;
     use risingwave_common::system_param::reader::SystemParamsRead;
@@ -833,7 +835,7 @@ mod tests {
     use tokio::sync::Notify;
     use tokio::task::JoinHandle;
     use tokio::time::sleep;
-    use tonic::{Request, Response, Status};
+    use tonic::{Request, Response, Status, Streaming};
 
     use super::*;
     use crate::barrier::GlobalBarrierManager;
@@ -861,6 +863,9 @@ mod tests {
 
     #[async_trait::async_trait]
     impl StreamService for FakeStreamService {
+        type StreamingControlStreamStream =
+            impl Stream<Item = std::result::Result<StreamingControlStreamResponse, tonic::Status>>;
+
         async fn update_actors(
             &self,
             request: Request<UpdateActorsRequest>,
@@ -923,25 +928,24 @@ mod tests {
             Ok(Response::new(ForceStopActorsResponse::default()))
         }
 
-        async fn inject_barrier(
-            &self,
-            _request: Request<InjectBarrierRequest>,
-        ) -> std::result::Result<Response<InjectBarrierResponse>, Status> {
-            Ok(Response::new(InjectBarrierResponse::default()))
-        }
-
-        async fn barrier_complete(
-            &self,
-            _request: Request<BarrierCompleteRequest>,
-        ) -> std::result::Result<Response<BarrierCompleteResponse>, Status> {
-            Ok(Response::new(BarrierCompleteResponse::default()))
-        }
-
         async fn wait_epoch_commit(
             &self,
             _request: Request<WaitEpochCommitRequest>,
         ) -> std::result::Result<Response<WaitEpochCommitResponse>, Status> {
             Ok(Response::new(WaitEpochCommitResponse::default()))
+        }
+
+        async fn streaming_control_stream(
+            &self,
+            request: Request<Streaming<StreamingControlStreamRequest>>,
+        ) -> Result<Response<Self::StreamingControlStreamStream>, Status> {
+            Result::<
+                _,
+                BoxStream<
+                    'static,
+                    std::result::Result<StreamingControlStreamResponse, tonic::Status>,
+                >,
+            >::Err(Status::unimplemented("not implemented"))
         }
     }
 

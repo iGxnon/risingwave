@@ -248,35 +248,6 @@ impl ManagedBarrierState {
         }
     }
 
-    /// Returns an iterator on epochs that is awaiting on `actor_id`.
-    /// This is used on notifying actor failure. On actor failure, the
-    /// barrier manager can call this method to iterate on epochs that
-    /// waits on the failed actor and then notify failure on the result
-    /// sender of the epoch.
-    pub(crate) fn epochs_await_on_actor(
-        &self,
-        actor_id: ActorId,
-    ) -> impl Iterator<Item = u64> + '_ {
-        self.epoch_barrier_state_map
-            .iter()
-            .filter_map(move |(prev_epoch, barrier_state)| {
-                #[allow(clippy::single_match)]
-                match barrier_state.inner {
-                    ManagedBarrierStateInner::Issued {
-                        ref remaining_actors,
-                        ..
-                    } => {
-                        if remaining_actors.contains(&actor_id) {
-                            Some(*prev_epoch)
-                        } else {
-                            None
-                        }
-                    }
-                    _ => None,
-                }
-            })
-    }
-
     /// Collect a `barrier` from the actor with `actor_id`.
     pub(super) fn collect(&mut self, actor_id: ActorId, barrier: &Barrier) {
         tracing::debug!(
