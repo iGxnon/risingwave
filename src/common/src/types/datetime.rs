@@ -364,7 +364,19 @@ impl ToText for Time {
 
 impl ToText for Timestamp {
     fn write<W: std::fmt::Write>(&self, f: &mut W) -> std::fmt::Result {
-        write!(f, "{}", self.0)
+        let (ce, year) = self.0.year_ce();
+        if ce {
+            write!(f, "{}", self.0.date())?;
+        } else {
+            write!(f, "{:04}-{:02}-{:02}", year, self.0.month(), self.0.day())?;
+        }
+        f.write_char(' ')?;
+        write!(f, "{}", self.0.time())?;
+        if !ce {
+            f.write_str(" BC")
+        } else {
+            Ok(())
+        }
     }
 
     fn write_with_type<W: std::fmt::Write>(&self, ty: &DataType, f: &mut W) -> std::fmt::Result {
