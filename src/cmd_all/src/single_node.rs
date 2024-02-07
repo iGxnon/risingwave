@@ -377,6 +377,7 @@ mod test {
     #[test]
     fn test_parse_extra_opts() {
         let raw_opts = "
+--meta-addr=127.0.0.1:8888
 --meta-extra-opts=--advertise-addr 127.0.0.1:9999 --data-directory \"some path with spaces\" \
 --state-store hummock+fs:///root/.risingwave/state_store \
 --sql-endpoint sqlite:///root/.risingwave/meta_store/single_node.db?mode=rwc
@@ -390,7 +391,9 @@ mod test {
                     prometheus_listener_addr: None,
                     config_path: None,
                     store_directory: None,
-                    meta_addr: None,
+                    meta_addr: Some(
+                        "127.0.0.1:8888",
+                    ),
                     compute_addr: None,
                     frontend_addr: None,
                     compactor_addr: None,
@@ -402,6 +405,7 @@ mod test {
                     ),
                     frontend_extra_opts: None,
                     compactor_extra_opts: None,
+                    dump_opts: false,
                 }"#]],
         );
         let actual_parsed = normalize_single_node_opts(&actual).unwrap();
@@ -489,7 +493,7 @@ mod test {
                             port: None,
                             meta_addr: List(
                                 [
-                                    http://0.0.0.0:5690/,
+                                    127.0.0.1:8888,
                                 ],
                             ),
                             prometheus_listener_addr: "0.0.0.0:1250",
@@ -509,7 +513,7 @@ mod test {
                             prometheus_listener_addr: "0.0.0.0:1250",
                             meta_address: List(
                                 [
-                                    http://0.0.0.0:5690/,
+                                    127.0.0.1:8888,
                                 ],
                             ),
                             compaction_worker_threads_number: None,
