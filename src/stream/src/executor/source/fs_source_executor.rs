@@ -25,6 +25,7 @@ use futures_async_stream::try_stream;
 use risingwave_common::catalog::Schema;
 use risingwave_common::system_param::local_manager::SystemParamsReaderRef;
 use risingwave_common::system_param::reader::SystemParamsRead;
+use risingwave_connector::error::ConnectorError;
 use risingwave_connector::source::reader::desc::{FsSourceDesc, SourceDescBuilder};
 use risingwave_connector::source::{
     BoxChunkSourceStream, ConnectorState, SourceContext, SourceCtrlOpts, SplitId, SplitImpl,
@@ -444,7 +445,7 @@ impl<S: StateStore> FsSourceExecutor<S> {
 
                                 origin_split.map(|split| {
                                     split.update_in_place(offset.clone())?;
-                                    Ok::<_, anyhow::Error>((id.clone(), split.clone()))
+                                    Ok::<_, ConnectorError>((id.clone(), split.clone()))
                                 })
                             })
                             .try_collect()?;
