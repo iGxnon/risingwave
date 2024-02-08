@@ -23,13 +23,7 @@ use risingwave_common::{bail, current_cluster_version};
 use risingwave_meta_model_v2::object::ObjectType;
 use risingwave_meta_model_v2::prelude::*;
 use risingwave_meta_model_v2::table::TableType;
-use risingwave_meta_model_v2::{
-    connection, database, function, index, object, object_dependency, schema, sink, source,
-    streaming_job, table, user_privilege, view, ActorId, ColumnCatalogArray, ConnectionId,
-    CreateType, DatabaseId, FragmentId, FunctionId, IndexId, JobStatus, ObjectId,
-    PrivateLinkService, SchemaId, SourceId, StreamSourceInfo, StreamingParallelism, TableId,
-    UserId,
-};
+use risingwave_meta_model_v2::{connection, database, function, index, object, object_dependency, schema, sink, source, streaming_job, table, user_privilege, view, ActorId, ColumnCatalogArray, ConnectionId, CreateType, DatabaseId, FragmentId, FunctionId, I32Array, IndexId, JobStatus, ObjectId, PrivateLinkService, SchemaId, SourceId, StreamSourceInfo, StreamingParallelism, TableId, UserId, fragment};
 use risingwave_pb::catalog::table::PbTableType;
 use risingwave_pb::catalog::{
     PbComment, PbConnection, PbDatabase, PbFunction, PbIndex, PbSchema, PbSink, PbSource, PbTable,
@@ -45,9 +39,9 @@ use risingwave_pb::user::PbUserInfo;
 use sea_orm::sea_query::{Expr, SimpleExpr};
 use sea_orm::ActiveValue::Set;
 use sea_orm::{
-    ActiveModelTrait, ColumnTrait, DatabaseConnection, DatabaseTransaction, EntityTrait,
-    IntoActiveModel, JoinType, PaginatorTrait, QueryFilter, QuerySelect, RelationTrait,
-    TransactionTrait, Value,
+    ActiveModelTrait, ColumnTrait, DatabaseBackend, DatabaseConnection, DatabaseTransaction,
+    EntityTrait, IntoActiveModel, JoinType, PaginatorTrait, QueryFilter, QuerySelect, QueryTrait,
+    RelationTrait, TransactionTrait, Value,
 };
 use tokio::sync::{RwLock, RwLockReadGuard};
 
@@ -436,6 +430,80 @@ impl CatalogController {
             .into_tuple()
             .all(&txn)
             .await?;
+
+        {
+            let table_sink_ids: Vec<ObjectId> = Sink::find()
+                .select_only()
+                .column(sink::Column::SinkId)
+                .filter(sink::Column::TargetTable.is_not_null())
+                .into_tuple()
+                .all(&txn)
+                .await?;
+
+            println!("table sink ids {:#?}", table_sink_ids);
+
+            let all_table_with_incomming_sinks: Vec<(ObjectId, I32Array)> = Table::find()
+                .select_only()
+                .columns(vec![table::Column::TableId, table::Column::IncomingSinks])
+                .into_tuple()
+                .all(&txn)
+                .await?;
+
+            let table_incomming_sinks_to_update = all_table_with_incomming_sinks
+                .into_iter()
+                .filter(|(table_id, incomming_sinks)| {
+                    let inner_ref = incomming_sinks.inner_ref();
+                    !inner_ref.is_empty()
+                        && inner_ref
+                            .iter()
+                            .any(|sink_id| !table_sink_ids.contains(sink_id))
+                })
+                .collect_vec();
+
+            let new_table_incomming_sinks = table_incomming_sinks_to_update
+                .into_iter()
+                .map(|(table_id, incomming_sinks)| {
+                    let new_incomming_sinks = incomming_sinks
+                        .into_inner()
+                        .extract_if(|id| table_sink_ids.contains(id))
+                        .collect_vec();
+                    (table_id, I32Array::from(new_incomming_sinks))
+                })
+                .collect_vec();
+
+            for (table_id, new_incomming_sinks) in &new_table_incomming_sinks {
+                let many = Table::update_many()
+                    .col_expr(
+                        table::Column::IncomingSinks,
+                        new_incomming_sinks.clone().into(),
+                    )
+                    .filter(table::Column::TableId.eq(*table_id));
+                let x = many.build(DatabaseBackend::Postgres).to_string();
+
+                println!("sql {}", x);
+            }
+            //
+            // let table_sink_ids: Vec<FragmentId> = Fragment::find()
+            //     .select_only()
+            //     .column(fragment::Column::FragmentId)
+            //     .filter()
+            //     .into_tuple()
+            //     .all(&txn)
+            //     .await?;
+
+
+            // println!("table inc {:#?}", table_incomming_sinks);
+
+            // let table_ids: Vec<TableId> = Table::find().sele
+        }
+
+        // clean incomming sink (table)
+        // clean upstream fragment id (fragment)
+        // clean stream node (fragment)
+        // clean upstream actor ids (actor)
+
+        panic!("123");
+
         if creating_job_ids.is_empty() {
             return Ok(ReleaseContext::default());
         }
@@ -475,6 +543,7 @@ impl CatalogController {
             .exec(&txn)
             .await?;
         assert!(res.rows_affected > 0);
+
         txn.commit().await?;
 
         Ok(ReleaseContext {

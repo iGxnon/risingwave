@@ -280,6 +280,8 @@ impl DdlController {
             }
         };
 
+        panic!("123");
+
         if let Some(replace_table_info) = target_replace_info {
             let stream_ctx =
                 StreamContext::from_protobuf(replace_table_info.fragment_graph.get_ctx().unwrap());
